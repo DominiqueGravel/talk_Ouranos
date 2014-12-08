@@ -1,0 +1,5 @@
+\beamer@endinputifotherversion {3.33pt}
+\beamer@sectionintoc {1}{Th\IeC {\'e}orie}{5}{0}{1}
+\beamer@sectionintoc {2}{M\IeC {\'e}thodes}{9}{0}{2}
+\beamer@sectionintoc {3}{R\IeC {\'e}sultats}{11}{0}{3}
+\beamer@sectionintoc {4}{Discussion}{16}{0}{4}

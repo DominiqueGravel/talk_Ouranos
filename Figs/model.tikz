@@ -1,0 +1,25 @@
+\begin{center}
+	\tikzstyle{noeud}=[circle,thick,minimum size = 1cm,inner sep =5pt,draw=QUICCgreen,fill=QUICCgreen]
+
+	\begin{tikzpicture}[->,>=stealth',auto,scale=0.45]
+		\node [circle,noeud] (M) at (0,0) {\color{white}\textbf{M}};
+		\node [circle,noeud] (B) at (-5,5) {\color{white}\textbf{B}};
+		\node [circle,noeud] (T) at (5,5) {\color{white}\textbf{T}};
+		\node [circle,noeud] (R) at (0,10) {\color{white}\textbf{R}};
+
+		\draw[thick,-latex] (M) to[bend right=10] node[above,sloped] {} (B);
+		\draw[thick,-latex] (B) to[bend right=10] node[below,sloped] {} (M);
+
+		\draw[thick,-latex] (T) to[bend right=10] node[above,sloped] {\footnotesize Colonization} (M);
+		\draw[thick,-latex] (M) to[bend right=10] node[below,sloped] {\footnotesize Exclusion} (T);
+
+		\draw[thick,-latex] (T) to[bend right=10] node[above,sloped] {\footnotesize Disturbance} (R);
+		\draw[thick,-latex] (R) to[bend right=10] node[below,sloped] {\footnotesize Succession} (T);
+
+		\draw[thick,-latex] (R) to[bend right=10] node[above,sloped] {} (B);
+		\draw[thick,-latex] (B) to[bend right=10] node[below,sloped] {} (R);
+		
+		\draw[thick,-latex,transform canvas={xshift=0.6ex}] (R) to node[above,sloped] {} (M);
+		\draw[thick,-latex,transform canvas={xshift=-0.6ex}] (M) to node[above,sloped] {} (R);
+	\end{tikzpicture}
+\end{center}

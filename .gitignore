@@ -1,0 +1,29 @@
+## DB credentials
+credentials.r
+
+## R ouputs
+
+.RData
+*.Rout
+ggmapTemp.png
+.Rapp.history
+*.rObj
+
+## Data
+/out_files/*.csv
+
+# python modules
+*.pyc
+
+#Personal config
+con_quicc_db_local.r
+
+*.aux
+*.log
+*.loc
+*.gz
+*.history
+*.bbl
+*.blg
+*.local*
+*.cut

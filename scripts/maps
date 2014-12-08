@@ -1,0 +1,241 @@
+rm(list = ls())
+setwd("/Users/DGravel/Documents/Projects_On_Going/Maple_migration/talk_Ouranos")
+
+#################################
+## RUN THE SDM                 ##
+#################################
+
+data = read.csv("fit_model/transitionsFourState.csv")
+selectedVars = c("annual_mean_temp2","annual_pp2")
+datSel = data[,c("state2",selectedVars)]
+datSel_wo_U <- subset(datSel, state2 != "U")
+datSel_wo_U$state <- droplevels(datSel_wo_U$state2)
+library(nnet)
+SDM1 = multinom(state2 ~ .^2 + I(annual_mean_temp2^2) + I(annual_mean_temp2^3) + I(annual_pp2^2) + I(annual_pp2^3), data = datSel_wo_U[,c("state2",selectedVars)], maxit =300)
+
+#################################
+## SOLVE THE MODEL             ##
+#################################
+
+# Original data
+climate_grid = read.csv("data/climate_grid.csv",sep = ";")
+climate_grid = subset(climate_grid,climate_grid[,3]>-4)
+climate_grid[,4] = climate_grid[,4]*12/10
+climate_grid[,6] = climate_grid[,6]*12/10
+
+# Standardized values
+climate_grid_std = climate_grid
+climate_grid_std[,3] = (climate_grid[,3]-1.529991)/1.891697
+climate_grid_std[,4] = (climate_grid[,4]*1000-1044.194)/132.858
+climate_grid_std[,5] = (climate_grid[,5]-1.529991)/1.891697
+climate_grid_std[,6] = (climate_grid[,6]*1000-1044.194)/132.858
+
+#################################
+## SOLVE THE MODEL             ##
+#################################
+
+# Initial values
+SDM2080 = matrix(nr = nrow(climate_grid), nc = 4)
+STM2000 = matrix(nr = nrow(climate_grid), nc = 4)
+STM2080 = matrix(nr = nrow(climate_grid), nc=4)
+maxEig = numeric(nrow(climate_grid))
+
+source("scripts/read_pars.R")
+#pars = as.list(read_pars("data/pars.txt"))
+pars = as.list(read_pars("data/pars_v0.txt"))
+#pars = as.list(read_pars("data/pars_v1.txt"))
+#pars = as.list(read_pars("data/GenSA_test_sub25000.txt"))
+
+source("scripts/get_eq.R")
+source("scripts/sim_ODEs.R")
+nsteps = 80
+for(z in 1:nrow(climate_grid_std)) {
+    dataProj = data.frame(annual_mean_temp2 = climate_grid_std[z,5], annual_pp2 = climate_grid_std[z,6])
+    SDM2080[z,] = as.numeric(predict(SDM1,new = dataProj,"prob", OOB=TRUE))   
+    res = get_eq(ENV1 = climate_grid_std[z,3],ENV2 = climate_grid_std[z,4], pars)
+    STM2000[z,] = res[1:4]
+    maxEig[z] = max(res[5:7])
+    STM2080[z,] = sim_ODEs(p0 = STM2000[z,], climStart=as.numeric(climate_grid_std[z,c(3,4)]),climEnd = as.numeric(climate_grid_std[z,c(5,6)]), nsteps, pars)
+    cat(z/nrow(climate_grid_std)*100," ",STM2000[z,1]," ",STM2000[z,2],'\n')
+}
+
+#write.table(SDM2080,"data/SDM2080_parsv1.txt")
+#write.table(STM2000,"data/STM2000_parsv1.txt")
+#write.table(STM2080,"data/STM2080_parsv1.txt")
+#write.table(maxEig,"data/maxEig_parsv1.txt")
+
+write.table(SDM2080,"data/SDM2080_parsv0.txt")
+write.table(STM2000,"data/STM2000_parsv0.txt")
+write.table(STM2080,"data/STM2080_parsv0.txt")
+write.table(maxEig,"data/maxEig_parsv0.txt")
+
+#write.table(SDM2080,"data/SDM2080_parssub25000.txt")
+#write.table(STM2000,"data/STM2000_parssub25000.txt")
+#write.table(STM2080,"data/STM2080_parssub25000.txt")
+#write.table(maxEig,"data/maxEig_parssub25000.txt")
+
+#################################
+## Load libraries              ##
+#################################
+
+require("reshape2")
+require("ggplot2")
+require("grid")
+require("maptools")
+require("RColorBrewer")
+
+#################################
+## Load shapefiles             ##
+#################################
+
+zone_veg <- readShapePoly("shapes/zone_veg.shp")
+zone_veg@proj4string <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+region_qc <- readShapePoly("shapes/region_qc.shp")
+region_qc@proj4string <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+
+# Transforme pour ggplot2
+zone_veg <- fortify(zone_veg)
+region_qc <- fortify(region_qc)
+load("shapes/map_shp.rObj")
+
+#################################
+## STM 2000                    ##
+#################################
+# Draw states
+draw = function(p) {
+    states = c("B","T","M","R")
+    draw = rmultinom(n=1,size=1,prob=p)
+    states[which(draw==1)]
+}
+
+States = apply(STM2000,1,draw)
+
+# Set the figure
+colors_state = c("darkcyan","palegreen3","black","orange")
+gg_prob_state <- cbind(climate_grid[,c(1,2)],States)
+
+theme_set(theme_grey(base_size=16))
+ggplot_state = ggplot(gg_prob_state) +
+    geom_polygon(data = subset(region_qc,hole==FALSE), aes(x = long, y = lat, group = group),fill="grey90",colour="grey60",size=0.05) +
+    geom_raster(aes(lon,lat,fill=States),alpha=0.9) +
+    scale_fill_manual(values=colors_state,name="States")+
+    geom_polygon(data = subset(lakes,hole==FALSE), aes(x = long, y = lat, group = group),fill="lightskyblue",color="deepskyblue2",size=0.1) +
+    #geom_polygon(data = zone_veg, aes(x = long, y = lat, group = group),fill=NA,colour="grey90",size=0.2) +
+    scale_x_continuous(expand=c(0,0)) + scale_y_continuous(expand=c(0,0))+
+    coord_equal() +
+    xlab("Longitude") + ylab("Latitude")+
+    theme(plot.title = element_text(lineheight=.8,face="bold"),
+        panel.background = element_rect(fill = "lightskyblue"),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "grey90",size=0.1))
+
+quartz(height = 5, width = 6)
+ggplot_state
+
+dev.copy2pdf(file = "Figs/STM_map_2000.pdf")
+
+#################################
+## EIGs 2000                   ##
+#################################
+logEig = log(-maxEig)
+gg_eig <- cbind(climate_grid[,c(1,2)],value=logEig)
+
+plot_eig = ggplot(gg_eig) +
+    geom_polygon(data = subset(region_qc,hole==FALSE), aes(x = long, y = lat, group = group),fill="grey90",colour="grey60",size=0.05) +
+    geom_raster(aes(lon,lat,fill=factor(cut(value,11),rev(levels(cut(value,11)))))) +
+    scale_fill_manual(values=brewer.pal(11,"Spectral"),name="Resilience")+
+    geom_polygon(data = subset(lakes,hole==FALSE), aes(x = long, y = lat, group = group),fill="lightskyblue",color="deepskyblue2",size=0.1) +
+   scale_x_continuous(expand=c(0,0)) + scale_y_continuous(expand=c(0,0))+
+    coord_equal() +
+    xlab("Longitude") + ylab("Latitude")+
+    theme(plot.title = element_text(lineheight=.8,face="bold"),
+    panel.background = element_rect(fill = "lightskyblue"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey90",size=0.1),
+    strip.text.x = element_text(size = 12,face="bold" ,colour = "white"),strip.background = element_rect(colour="black", fill="black"))
+
+quartz(height = 5, width = 6)
+plot_eig
+
+dev.copy2pdf(file = "Figs/Eig_map.pdf")
+
+#################################
+## SDM 2080                    ##
+#################################
+# Projection
+dataProj = data.frame(annual_mean_temp2 = climate_grid_std[,5], annual_pp2 = climate_grid_std[,6])
+projSDM= predict(SDM1,new=dataProj,"prob", OOB=TRUE)
+
+# Draw values
+draw = function(p) {
+  states = c("B","M","R","T")
+  draw = rmultinom(n=1,size=1,prob=p)
+  states[which(draw==1)]
+}
+States = apply(SDM2080,1,draw)
+
+# Set the figure
+colors_state = c("darkcyan","palegreen3","black","orange")
+gg_prob_state <- cbind(climate_grid[,c(1,2)],States)
+
+theme_set(theme_grey(base_size=16))
+ggplot_state = ggplot(gg_prob_state) +
+    geom_polygon(data = subset(region_qc,hole==FALSE), aes(x = long, y = lat, group = group),fill="grey90",colour="grey60",size=0.05) +
+    geom_raster(aes(lon,lat,fill=States),alpha=0.9) +
+    scale_fill_manual(values=colors_state,name="States")+
+    geom_polygon(data = subset(lakes,hole==FALSE), aes(x = long, y = lat, group = group),fill="lightskyblue",color="deepskyblue2",size=0.1) +
+    #geom_polygon(data = zone_veg, aes(x = long, y = lat, group = group),fill=NA,colour="grey90",size=0.2) +
+    scale_x_continuous(expand=c(0,0)) + scale_y_continuous(expand=c(0,0))+
+    coord_equal() +
+    xlab("Longitude") + ylab("Latitude")+
+    theme(plot.title = element_text(lineheight=.8,face="bold"),
+        panel.background = element_rect(fill = "lightskyblue"),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "grey90",size=0.1))
+
+
+quartz(height = 5, width = 6)
+ggplot_state
+
+dev.copy2pdf(file = "Figs/SDM_map_2080.pdf")
+
+#################################
+## STM 2080                    ##
+#################################
+
+# Draw values
+draw = function(p) {
+  states = c("B","T","M","R")
+  draw = rmultinom(n=1,size=1,prob=p)
+  states[which(draw==1)]
+}
+States = apply(STM2080,1,draw)
+
+gg_prob_state <- cbind(climate_grid[,c(1,2)],States)
+
+# Do the map
+colors_state = c("darkcyan","palegreen3","black","orange")
+theme_set(theme_grey(base_size=16))
+ggplot_state = ggplot(gg_prob_state) +
+    geom_polygon(data = subset(region_qc,hole==FALSE), aes(x = long, y = lat, group = group),fill="grey90",colour="grey60",size=0.05) +
+    geom_raster(aes(lon,lat,fill=States),alpha=0.9) +
+    scale_fill_manual(values=colors_state,name="States")+
+    geom_polygon(data = subset(lakes,hole==FALSE), aes(x = long, y = lat, group = group),fill="lightskyblue",color="deepskyblue2",size=0.1) +
+    #geom_polygon(data = zone_veg, aes(x = long, y = lat, group = group),fill=NA,colour="grey90",size=0.2) +
+    scale_x_continuous(expand=c(0,0)) + scale_y_continuous(expand=c(0,0))+
+    coord_equal() +
+    xlab("Longitude") + ylab("Latitude")+
+    theme(plot.title = element_text(lineheight=.8,face="bold"),
+        panel.background = element_rect(fill = "lightskyblue"),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "grey90",size=0.1))
+
+
+quartz(height = 5, width = 6)
+ggplot_state
+
+dev.copy2pdf(file = "Figs/STM_map_2080.pdf")
+
+
+
+
